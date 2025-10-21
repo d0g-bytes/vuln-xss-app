@@ -130,3 +130,5 @@ http://localhost:APP_PORT/search.html?q=<img src=x onerror="new Image().src='htt
 - Remove `DemoCookieController` or set cookie to `HttpOnly=true`.
 - Revert any demo-only front-end code that auto-executes script content from query params or stored comments.
 - Replace any `innerHTML` use for untrusted data with `textContent` or sanitized HTML.
+
+*
